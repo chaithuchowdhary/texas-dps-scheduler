@@ -446,16 +446,26 @@ class TexasScheduler {
             const response = (await this.requestApi('/api/Auth', 'POST', requestBody).then(res => res.data)) as string;
             this.authToken = response;
         } else if (this.config.appSettings.captcha.strategy === 'browser') {
-            const token = await getAuthTokenFromBroswer();
-            this.authToken = token;
+            try {
+                const token = await getAuthTokenFromBroswer();
+                this.authToken = token;
+            } catch (error) {
+                log.error('Error getting auth token from browser:', error);
+                this.authToken = '';
+            }
         } else if (this.config.appSettings.captcha.strategy === 'manual') {
-            const response = await prompts({
-                type: 'text',
-                name: 'token',
-                message: 'Your captcha token is expired. Enter the new token: ',
-                onState: (state: { aborted: boolean }) => (state.aborted ? process.exit(1) : null),
-            });
-            this.authToken = response.token;
+            try {
+                const response = await prompts({
+                    type: 'text',
+                    name: 'token',
+                    message: 'Your captcha token is expired. Enter the new token: ',
+                    onState: (state: { aborted: boolean }) => (state.aborted ? process.exit(1) : null),
+                });
+                this.authToken = response.token;
+            } catch (error) {
+                log.error('Error getting auth token from prompts:', error);
+                this.authToken = '';
+            }
         }
 
         if (this.authToken) {
@@ -468,7 +478,14 @@ class TexasScheduler {
             log.error(`Get captcha token failed after ${this.maxCaptchaSolverRetries} retries! will retry!`);
             return await this.getCaptchaToken(null, 0);
         }
-        if (!taskId) taskId = await CreateCaptchaSolverTask();
+        if (!taskId) {
+            try {
+                taskId = await CreateCaptchaSolverTask();
+            } catch (error) {
+                log.error('Error creating captcha solver task:', error);
+                return null; // Or throw error; returning null to align with existing retry logic
+            }
+        }
         const captchaToken = await this.getCaptchaResult(taskId);
         if (captchaToken === undefined) {
             await sleep.setTimeout(2000);
